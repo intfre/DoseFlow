@@ -14,6 +14,10 @@ struct TodayView: View {
                 .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
                 .doseFlowListRow()
 
+            reminderBanner
+                .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 8, trailing: 16))
+                .doseFlowListRow()
+
             if let schedule {
                 comparisonBanner
                     .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 8, trailing: 16))
@@ -85,6 +89,11 @@ struct TodayView: View {
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .background(Color(uiColor: .systemGroupedBackground))
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            Color.clear
+                .frame(height: 72)
+                .allowsHitTesting(false)
+        }
         .navigationTitle(navigationTitle)
         .confirmationDialog(
             "确定将今天所有药物记为跳过吗？",
@@ -102,6 +111,49 @@ struct TodayView: View {
 
     private var navigationTitle: String {
         "用药安排"
+    }
+
+    private var reminderBanner: some View {
+        Group {
+            if store.remindersEnabled {
+                Label(
+                    store.reminderScheduleText ?? "用药提醒已开启",
+                    systemImage: store.strongAlarmsEnabled
+                        ? "alarm.waves.left.and.right.fill"
+                        : "bell.badge.fill"
+                )
+                .font(.system(size: 13, weight: .medium, design: .rounded))
+                .foregroundStyle(DoseFlowTheme.accent)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 11)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(DoseFlowTheme.softAccent)
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            } else {
+                Button {
+                    Task { await store.setRemindersEnabled(true) }
+                } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: "bell.slash.fill")
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("用药提醒未开启")
+                                .font(DoseFlowTheme.cardTitle)
+                            Text("点击开启，否则到点不会发送通知")
+                                .font(.system(size: 12, weight: .regular, design: .rounded))
+                        }
+                        Spacer()
+                        Text("开启")
+                            .font(.subheadline.weight(.semibold))
+                    }
+                    .foregroundStyle(.orange)
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.orange.opacity(0.12))
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+                .buttonStyle(.plain)
+            }
+        }
     }
 
     private var datePicker: some View {
@@ -122,15 +174,15 @@ struct TodayView: View {
         } label: {
             VStack(spacing: 4) {
                 Text(title)
-                    .font(.caption)
+                    .font(.system(size: 13, weight: .medium, design: .rounded))
                 Text(date.formatted(.dateTime.day()))
-                    .font(.headline)
+                    .font(.system(size: 21, weight: .bold, design: .rounded))
             }
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 10)
+            .frame(height: 66)
             .foregroundStyle(isSelected ? .white : .primary)
             .background(isSelected ? DoseFlowTheme.accent : Color(uiColor: .secondarySystemGroupedBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
         }
         .buttonStyle(.plain)
         .accessibilityLabel("\(title)，\(date.formatted(date: .abbreviated, time: .omitted))")
@@ -145,18 +197,18 @@ struct TodayView: View {
                     .font(.headline)
                 VStack(alignment: .leading, spacing: 4) {
                     Text("与前一天的剂量不同")
-                        .font(.headline)
+                        .font(DoseFlowTheme.cardTitle)
                     ForEach(changed) { change in
                         Text(changeDescription(change))
-                            .font(.subheadline)
+                            .font(.system(size: 14, weight: .regular, design: .rounded))
                     }
                 }
             }
             .foregroundStyle(Color.brown)
-            .padding(16)
+            .padding(15)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(DoseFlowTheme.warning)
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
         }
     }
 
@@ -164,19 +216,41 @@ struct TodayView: View {
         HStack {
             VStack(alignment: .leading, spacing: 3) {
                 Text(store.selectedDate.formatted(date: .complete, time: .omitted))
-                    .font(.caption)
+                    .font(.system(size: 13, weight: .medium, design: .rounded))
                     .foregroundStyle(.secondary)
                 Text(store.regimen.name)
-                    .font(.title3.weight(.semibold))
+                    .font(DoseFlowTheme.sectionTitle)
             }
             Spacer()
-            Text(completionText(schedule))
-                .font(.caption.weight(.medium))
-                .foregroundStyle(DoseFlowTheme.accent)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(DoseFlowTheme.softAccent)
-                .clipShape(Capsule())
+            HStack(spacing: 8) {
+                Text(completionText(schedule))
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(DoseFlowTheme.accent)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(DoseFlowTheme.softAccent)
+                    .clipShape(Capsule())
+
+                Menu {
+                    Button("跳过未完成药物", role: .destructive) {
+                        showingSkipConfirmation = true
+                    }
+                    .disabled(schedule.doses.allSatisfy { store.log(for: $0.occurrenceID) != nil })
+
+                    Button("撤销当天记录", systemImage: "arrow.uturn.backward") {
+                        store.clearLogs(for: schedule)
+                    }
+                    .disabled(!hasAnyLog(schedule))
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 30, height: 30)
+                        .background(Color(uiColor: .secondarySystemGroupedBackground))
+                        .clipShape(Circle())
+                }
+                .accessibilityLabel("更多当天操作")
+            }
         }
     }
 
@@ -195,7 +269,7 @@ struct TodayView: View {
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(dose.medication.name)
-                        .font(.headline)
+                        .font(DoseFlowTheme.cardTitle)
                     doseStatusLine(dose, log: log, deferral: deferral)
                 }
 
@@ -203,7 +277,8 @@ struct TodayView: View {
 
                 VStack(alignment: .trailing, spacing: 8) {
                     Text("\(dose.amount.displayText) \(dose.medication.unit.displayName)")
-                        .font(.title3.weight(.semibold))
+                        .font(DoseFlowTheme.amount)
+                        .monospacedDigit()
 
                     if log?.status == .taken {
                         Label("已服用", systemImage: "checkmark")
@@ -213,9 +288,13 @@ struct TodayView: View {
                         Button(log?.status == .skipped ? "改为已服用" : "完成") {
                             store.markTaken(dose)
                         }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                        .tint(DoseFlowTheme.accent)
+                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                        .foregroundStyle(DoseFlowTheme.accent)
+                        .padding(.horizontal, 14)
+                        .frame(height: 36)
+                        .background(DoseFlowTheme.softAccent)
+                        .clipShape(Capsule())
+                        .buttonStyle(.plain)
                     }
                 }
             }
@@ -242,40 +321,38 @@ struct TodayView: View {
                     .foregroundStyle(log.status == .taken ? DoseFlowTheme.accent : .secondary)
             }
         }
-        .font(.caption)
+        .font(.system(size: 13, weight: .regular, design: .rounded))
         .foregroundStyle(.secondary)
     }
 
     private func primaryActions(_ schedule: DailySchedule) -> some View {
         let remainingCount = remainingDoses(in: schedule).count
 
-        return VStack(spacing: 10) {
+        return VStack(spacing: 12) {
             Button {
                 store.markRemainingTaken(schedule)
             } label: {
-                Label(
-                    primaryActionTitle(schedule, remainingCount: remainingCount),
-                    systemImage: "checkmark.circle.fill"
-                )
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(DoseFlowTheme.accent)
-            .disabled(remainingCount == 0)
+                ZStack {
+                    Text(primaryActionTitle(schedule, remainingCount: remainingCount))
+                        .font(DoseFlowTheme.actionTitle)
+                        .frame(maxWidth: .infinity, alignment: .center)
 
-            HStack {
-                Button("跳过未完成药物", role: .destructive) {
-                    showingSkipConfirmation = true
+                    HStack {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 17, weight: .semibold))
+                        Spacer()
+                    }
+                    .padding(.horizontal, 20)
                 }
-                .disabled(schedule.doses.allSatisfy { store.log(for: $0.occurrenceID) != nil })
-                Spacer()
-                Button("撤销当天记录") {
-                    store.clearLogs(for: schedule)
-                }
-                .disabled(!hasAnyLog(schedule))
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .frame(height: 56)
+                .background(DoseFlowTheme.accent)
+                .clipShape(RoundedRectangle(cornerRadius: 19, style: .continuous))
             }
-            .font(.subheadline)
+            .buttonStyle(.plain)
+            .disabled(remainingCount == 0)
+            .opacity(remainingCount == 0 ? 0.45 : 1)
         }
     }
 
@@ -286,7 +363,8 @@ struct TodayView: View {
         )
         .font(.footnote)
         .foregroundStyle(.secondary)
-        .padding(.top, 6)
+        .padding(.top, 4)
+        .padding(.bottom, 8)
     }
 
     private func changeDescription(_ change: DoseChange) -> String {

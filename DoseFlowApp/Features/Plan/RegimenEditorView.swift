@@ -2,6 +2,7 @@ import SwiftUI
 
 struct RegimenEditorView: View {
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var store: DoseFlowStore
 
     let existingRegimen: Regimen
     let onSave: (Regimen) async -> Void
@@ -30,6 +31,7 @@ struct RegimenEditorView: View {
                 howItWorksSection
                 examplesSection
                 basicsSection
+                remindersSection
                 medicationsSection
 
                 ForEach(Array(scheduleGroups.indices), id: \.self) { groupIndex in
@@ -133,6 +135,55 @@ struct RegimenEditorView: View {
         Section("疗程") {
             TextField("计划名称", text: $planName)
             DatePicker("开始日期", selection: $startDate, displayedComponents: .date)
+        }
+    }
+
+    private var remindersSection: some View {
+        Section {
+            Toggle(
+                "保存后按计划时间提醒",
+                isOn: Binding(
+                    get: { store.remindersEnabled },
+                    set: { enabled in
+                        Task { await store.setRemindersEnabled(enabled) }
+                    }
+                )
+            )
+
+            if store.remindersEnabled {
+                Label(
+                    store.reminderScheduleText ?? "提醒已开启，保存后会按新计划重新安排",
+                    systemImage: "bell.badge.fill"
+                )
+                .font(.footnote)
+                .foregroundStyle(DoseFlowTheme.accent)
+            } else {
+                Label(
+                    "仅设置服药时间不会自动发送通知，需要同时开启此开关。",
+                    systemImage: "bell.slash.fill"
+                )
+                .font(.footnote)
+                .foregroundStyle(.orange)
+            }
+
+            if store.supportsStrongAlarms {
+                Toggle(
+                    "使用强提醒闹钟",
+                    isOn: Binding(
+                        get: { store.strongAlarmsEnabled },
+                        set: { enabled in
+                            Task { await store.setStrongAlarmsEnabled(enabled) }
+                        }
+                    )
+                )
+                .disabled(!store.remindersEnabled)
+
+                Text("强提醒使用系统闹钟界面和声音；同一时间的多种药只会响一次。")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        } header: {
+            Text("用药提醒")
         }
     }
 

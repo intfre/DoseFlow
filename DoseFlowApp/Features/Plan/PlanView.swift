@@ -64,9 +64,58 @@ struct PlanView: View {
                         }
                     )
                 )
-                Text("开启后会按当前计划安排未来30天内最近60条提醒；多药情况下会在每次打开 App 或修改计划时向后滚动刷新。")
+                if store.remindersEnabled {
+                    Label(
+                        store.reminderScheduleText ?? "提醒已开启，正在更新安排",
+                        systemImage: "bell.badge.fill"
+                    )
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(DoseFlowTheme.accent)
+
+                    Button {
+                        Task { await store.sendTestReminder() }
+                    } label: {
+                        Label("发送测试提醒（5秒后）", systemImage: "bell.and.waves.left.and.right")
+                    }
+                } else {
+                    Text("当前不会发送系统通知。仅在计划中设置服药时间是不够的，还需开启此开关。")
+                        .font(.footnote)
+                        .foregroundStyle(.orange)
+                }
+
+                if store.supportsStrongAlarms {
+                    Toggle(
+                        "强提醒闹钟",
+                        isOn: Binding(
+                            get: { store.strongAlarmsEnabled },
+                            set: { newValue in
+                                Task { await store.setStrongAlarmsEnabled(newValue) }
+                            }
+                        )
+                    )
+                    .disabled(!store.remindersEnabled)
+
+                    Label(
+                        store.strongAlarmsEnabled
+                            ? "已使用系统闹钟强提醒；同一时间的多种药会合并提醒。"
+                            : "适合容易错过通知的情况，开启时需要单独授权。",
+                        systemImage: store.strongAlarmsEnabled ? "alarm.waves.left.and.right.fill" : "alarm"
+                    )
+                    .font(.footnote)
+                    .foregroundStyle(store.strongAlarmsEnabled ? DoseFlowTheme.accent : .secondary)
+
+                    if store.strongAlarmsEnabled {
+                        Button {
+                            Task { await store.sendTestStrongAlarm() }
+                        } label: {
+                            Label("测试强提醒（10秒后）", systemImage: "alarm.waves.left.and.right")
+                        }
+                    }
+                } else {
+                    Label("强提醒闹钟需要 iOS 26 或更高版本", systemImage: "alarm")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
             }
 
             Section {
